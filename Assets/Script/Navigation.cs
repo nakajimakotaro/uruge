@@ -7,82 +7,96 @@ class Node {
 	public double cost;
 	public double heuristicCost;
 	public double score;
-	public PassConnect passConnect;
+	public Navi navi;
 	public Node parent;
-	public Node(double cost, PassConnect goal, Node parent, PassConnect passConnect) {
+	public Node(double cost, Navi goal, Node parent, Navi passConnect) {
 		this.cost = cost;
-		this.passConnect = passConnect;
+		this.navi = passConnect;
 		this.parent = parent;
 
-		this.heuristicCost = Vector2.Distance(goal.owner.position, passConnect.owner.position);
+		this.heuristicCost = Vector2.Distance(goal.position, passConnect.position);
 		this.score = this.cost + this.heuristicCost;
 	}
 }
 
-class Navigation {
-	private List<Node> openList = new List<Node>();
-	private List<Node> closeList = new List<Node>();
-	private PassConnect startPass;
-	private PassConnect goalPass;
+static class Navigation {
+	public static List<Navi> naviList = new List<Navi>();
+	
+	public static void bake(){
+		foreach(var groudArea in naviList){
+			groudArea.split();
+		}
+		foreach(var groudArea in naviList){
+			groudArea.connect();
+		}
+	}
+	public static List<Navi> getRoute(Vector2 startPos, Vector2 goalPos) {
+		List<Node> openList = new List<Node>();
+		List<Node> closeList = new List<Node>();
+		Navi startPass;
+		Navi goalPass;
 
-	public Navigation(Vector2 startPos, Vector2 goalPos) {
 		startPass = getPosUnderPass(startPos);
 		goalPass = getPosUnderPass(goalPos);
-	}
-	public List<PassConnect> getRoute() {
-		if(startPass == goalPass){
-			var r = new List<PassConnect>();
+
+		if (startPass == goalPass) {
+			var r = new List<Navi>();
 			r.Add(goalPass);
 			return r;
 		}
 
-		List<PassConnect> route = new List<PassConnect>();
+		List<Navi> route = new List<Navi>();
 		var goalNode = new Node(0, startPass, null, goalPass);
 		closeList.Add(goalNode);
-		aroundOpen(goalNode);
-		Node currentNode = searchMinScoreOpenNode();
-		while (currentNode.passConnect != startPass) {
-			aroundOpen(currentNode);
-			closeNode(currentNode);
+		aroundOpen(goalNode, openList, closeList, startPass);
+		Node currentNode = searchMinScoreOpenNode(openList);
+		while (currentNode.navi != startPass) {
+			aroundOpen(currentNode, openList, closeList, startPass);
+			closeNode(currentNode, openList, closeList);
 			if (openList.Count == 0) {
 				return null;
 			}
 
-			currentNode = searchMinScoreOpenNode();
+			currentNode = searchMinScoreOpenNode(openList);
 		}
 		while (currentNode != null) {
-			route.Add(currentNode.passConnect);
+			route.Add(currentNode.navi);
 			currentNode = currentNode.parent;
 		}
 
 		return route;
 	}
-	private void aroundOpen(Node passNode) {
-		foreach (var aroundPass in passNode.passConnect.passConnectList) {
+	private static void aroundOpen(Node passNode, List<Node> openList, List<Node> closeList, Navi startPass) {
+		foreach (var aroundPass in passNode.navi.connectNaviList) {
 			if (
-				openList.Find(x => x.passConnect == aroundPass) != null ||
-				closeList.Find(x => x.passConnect == aroundPass) != null
+				openList.Find(x => x.navi == aroundPass) != null ||
+				closeList.Find(x => x.navi == aroundPass) != null
 			) {
 				continue;
 			}
-			double cost = Vector2.Distance(passNode.passConnect.owner.position, aroundPass.owner.position) + passNode.cost;
+			double cost = Vector2.Distance(passNode.navi.position, aroundPass.position) + passNode.cost;
 			openList.Add(new Node(cost, startPass, passNode, aroundPass));
 		}
 	}
-	private Node searchMinScoreOpenNode() {
+	private static Node searchMinScoreOpenNode(List<Node> openList) {
 		return openList.Aggregate((c, n) => c.score < n.score ? c : n);
 	}
-	private void closeNode(Node node) {
+	private static void closeNode(Node node, List<Node> openList, List<Node> closeList) {
 		openList.Remove(node);
 		closeList.Add(node);
 	}
-	static public PassConnect getPosUnderPass(Vector2 pos) {
+	static Navi getPosUnderPass(Vector2 pos) {
 		var list = Physics2D.RaycastAll(pos, Vector2.down);
 		foreach (var v in list) {
-			var passConnect = v.transform.GetComponent<PassConnect>();
-			if (passConnect) {
-				return passConnect;
+			var passConnect = v.transform.GetComponent<GroundArea>();
+			if (!passConnect) {
+				continue;
 			}
+			var naviArea = passConnect.getNavi(pos.x);
+			if (naviArea == null) {
+				continue;
+			}
+			return naviArea;
 		}
 		return null;
 	}

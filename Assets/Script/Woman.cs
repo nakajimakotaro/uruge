@@ -6,6 +6,9 @@ public class Woman : MonoBehaviour {
     public Vector3 goPos;
 
     public Transform target;
+    public Ladder handLadder;
+    public bool inLadderTopExitPoint;
+    public bool inLadderBottomExitPoint;
 
     public bool IsLeft;
     private StateMachine<Woman> stateMachine;
@@ -13,8 +16,8 @@ public class Woman : MonoBehaviour {
     public bool canStand() {
         return gameObject.transform.Find("OnGroundCheck").GetComponent<OnGroundCheck>().canStand;
     }
-    public List<PassConnect> onPassConnectList() {
-        return gameObject.transform.Find("OnGroundCheck").GetComponent<OnGroundCheck>().onPassConnectList;
+    public List<NaviArea> onPassConnectList() {
+        return gameObject.transform.Find("OnGroundCheck").GetComponent<OnGroundCheck>().onNaviAreaList;
     }
 
     public bool IsForeBlock() {
@@ -58,34 +61,32 @@ public class Woman : MonoBehaviour {
         }
     }
 
-    public void walk(string direciton) {
-        Vector3 moveVector = new Vector3();
-        if (direciton == "left") {
-            moveVector.x = -2 * Time.deltaTime;
-        } else if (direciton == "right") {
-            moveVector.x = 2 * Time.deltaTime;
+    void OnTriggerEnter2D(Collider2D collider){
+        if(collider.name == "TopExitPoint"){
+            inLadderTopExitPoint = true;
         }
-        gameObject.transform.position = gameObject.transform.position + moveVector;
+        if(collider.name == "BottomExitPoint"){
+            inLadderBottomExitPoint = true;
+        }
     }
-    public void fall() {
-        Vector3 moveVector = new Vector3();
-        moveVector.y = 3 * Time.deltaTime;
-        gameObject.transform.position = gameObject.transform.position + moveVector;
+    void OnTriggerExit2D(Collider2D collider){
+        if(collider.name == "TopExitPoint"){
+            inLadderTopExitPoint = false;
+        }
+        if(collider.name == "BottomExitPoint"){
+            inLadderBottomExitPoint = false;
+        }
     }
-    public void ladderUp() {
-        Vector3 pos = new Vector3();
-        pos.y = Time.deltaTime * 2;
-        gameObject.transform.position = gameObject.transform.position + pos;
-    }
-    public void ladderDown() {
-        Vector3 move = new Vector3();
-        move.y = Time.deltaTime * -2;
-        gameObject.transform.position = gameObject.transform.position + move;
+    public void OnDrawGizmos(){
+        foreach(var navi in onPassConnectList()){
+            Vector3 pos = navi.position;
+            Gizmos.DrawSphere(pos - new Vector3(0, 0, 1), 0.2f);
+        }
     }
 }
 
 class PassTraceState : State<Woman> {
-    private List<PassConnect> passList;
+    private List<Navi> naviList;
     public StateMachine<Woman> subMachine;
     private int passIndex;
 
@@ -100,31 +101,32 @@ class PassTraceState : State<Woman> {
         subMachine.Play("walk");
     }
 
-    private void nextPassAreaMove(){
-        if (owner.transform.position.x > passList[passIndex + 1].transform.position.x) {
-            owner.IsLeft = true;
-        } else {
-            owner.IsLeft = false;
-        }
-        if (passIndex + 1 < passList.Count) {
-            if (subMachine.nowStateName == "walk" &&
-                passList[passIndex].GetComponent<LadderDownPassConnect>() &&
-                passList[passIndex + 1].GetComponent<LadderTopPassConnect>()
+    private void nextPassAreaMove() {
+        owner.IsLeft = owner.transform.position.x > naviList[passIndex + 1].position.x;
+        if (subMachine.nowStateName == "walk" &&
+            naviList[passIndex + 1] is NaviLinkEntryArea &&
+            naviList[passIndex + 1].owner.GetComponent<NaviLadder>() != null
+        ) {
+            var naviLadder = naviList[passIndex + 1].owner.GetComponent<NaviLadder>();
+            var entry = naviList[passIndex + 1] as NaviLinkEntryArea;
+
+            if (
+                naviLadder.entryTop == entry &&
+                Vector2.Distance(owner.transform.position, entry.position) < 0.2
             ) {
-                subMachine.Play("ladderUp");
-            }
-            if (subMachine.nowStateName == "walk" &&
-                passList[passIndex].GetComponent<LadderTopPassConnect>() &&
-                passList[passIndex + 1].GetComponent<LadderDownPassConnect>()
-            ) {
-                Vector3 pos = owner.transform.position;
-                pos.x = passList[passIndex].gameObject.transform.parent.transform.position.x;
-                owner.transform.position = pos;
+                owner.handLadder = naviLadder.owner;
                 subMachine.Play("ladderDown");
+            }
+            if (
+                naviLadder.entryBottom == entry &&
+                Vector2.Distance(owner.transform.position, entry.position) < 0.2
+            ) {
+                owner.handLadder = naviLadder.owner;
+                subMachine.Play("ladderUp");
             }
         }
     }
-    private void directTargetMove(){
+    private void directTargetMove() {
         if (owner.transform.position.x > owner.goPos.x) {
             owner.IsLeft = true;
         } else {
@@ -133,21 +135,24 @@ class PassTraceState : State<Woman> {
     }
 
     public override void StateUpdate() {
-        if (Time.frameCount == 2) {
-            passList = new Navigation(owner.transform.position, owner.goPos).getRoute();
+        if (Time.frameCount == 1) {
+            Navigation.bake();
+            naviList = Navigation.getRoute(owner.transform.position, owner.goPos);
         }
-        if (passList == null) {
+        if (naviList == null) {
             return;
         }
-        foreach(var passConnect in owner.onPassConnectList()){
-            int i = passList.FindIndex(x=>x==passConnect);
-            if(passIndex < i){
-                passIndex = i;
+        if (subMachine.nowStateName == "walk") {
+            foreach (var pass in owner.onPassConnectList()) {
+                int i = naviList.FindIndex(x => x == pass);
+                if (passIndex < i) {
+                    passIndex = i;
+                }
             }
         }
-        if(passIndex + 1 < passList.Count){
+        if (passIndex + 1 < naviList.Count) {
             nextPassAreaMove();
-        }else{
+        } else {
             directTargetMove();
         }
 
@@ -162,10 +167,11 @@ class WalkState : State<Woman> {
     public override void StateStart() { }
 
     public override void StateUpdate() {
-        if (owner.IsLeft) {
-            owner.walk("left");
-        } else {
-            owner.walk("right");
+        Vector3 moveVector = new Vector3();
+        moveVector.x = 2 * (owner.IsLeft ? -1 : 1) * Time.deltaTime;
+        owner.transform.position = owner.transform.position + moveVector;
+        if(!owner.canStand()){
+            machine.Play("fall");
         }
     }
 
@@ -176,13 +182,17 @@ class LadderUpState : State<Woman> {
     public LadderUpState(StateMachine<Woman> machine) : base(machine) { }
 
     public override void StateStart() {
+        owner.transform.position = new Vector3(owner.handLadder.transform.position.x, owner.transform.position.y, owner.transform.position.z);
     }
 
     public override void StateUpdate() {
-        if (owner.canStand()) {
+        if (owner.inLadderTopExitPoint) {
             machine.Play("walk");
+            owner.handLadder = null;
         }
-        owner.ladderUp();
+        Vector3 move = new Vector3();
+        move.y = Time.deltaTime * 2;
+        owner.transform.position = owner.transform.position + move;
     }
 
     public override void StateEnd() { }
@@ -193,13 +203,17 @@ class LadderDownState : State<Woman> {
     public LadderDownState(StateMachine<Woman> machine) : base(machine) { }
 
     public override void StateStart() {
+        owner.transform.position = new Vector3(owner.handLadder.transform.position.x, owner.transform.position.y, owner.transform.position.z);
     }
 
     public override void StateUpdate() {
-        if (owner.canStand()) {
+        if (owner.inLadderBottomExitPoint) {
             machine.Play("walk");
+            owner.handLadder = null;
         }
-        owner.ladderDown();
+        Vector3 move = new Vector3();
+        move.y = Time.deltaTime * -2;
+        owner.transform.position = owner.transform.position + move;
     }
 
     public override void StateEnd() { }
@@ -212,9 +226,10 @@ class FallState : State<Woman> {
     public override void StateUpdate() {
         if (owner.canStand()) {
             machine.Play("walk");
-        } else {
-            owner.fall();
         }
+        Vector3 moveVector = new Vector3();
+        moveVector.y = -3 * Time.deltaTime;
+        owner.transform.position = owner.transform.position + moveVector;
     }
 
     public override void StateEnd() { }

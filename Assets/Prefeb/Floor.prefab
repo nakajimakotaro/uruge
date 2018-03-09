@@ -21,7 +21,7 @@ GameObject:
   - component: {fileID: 4210465290202268}
   - component: {fileID: 61149102377197214}
   - component: {fileID: 50772017684888340}
-  - component: {fileID: 114108460168732650}
+  - component: {fileID: 114839399298739148}
   m_Layer: 0
   m_Name: PassConnectArea
   m_TagString: Untagged
@@ -381,7 +381,7 @@ BoxCollider2D:
   serializedVersion: 2
   m_Size: {x: 3.4700947, y: 0.47604084}
   m_EdgeRadius: 0
---- !u!114 &114108460168732650
+--- !u!114 &114839399298739148
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_PrefabParentObject: {fileID: 0}
@@ -389,11 +389,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 1015521046394500}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d5093823f6038e04bb230f85c94fe264, type: 3}
+  m_Script: {fileID: 11500000, guid: 0d2679e4e68d57241b5aceb35b0b7ae3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  owner: {fileID: 4883108893336004}
-  passConnectList: []
 --- !u!212 &212134663923529152
 SpriteRenderer:
   m_ObjectHideFlags: 1
